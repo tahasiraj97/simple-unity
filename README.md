@@ -227,34 +227,60 @@ The `src` directory can then be used for the new Unity project while retaining t
 
 ## Architecture
 
-```text
-┌───────────────────────────────┐
-│ Client Computer               │
-│                               │
-│ Browser                       │
-│ VS Code / SSH                 │
-└───────────────┬───────────────┘
-                │
-                ▼
-┌───────────────────────────────┐
-│ Linux Server                  │
-│                               │
-│ Docker Compose                │
-│                               │
-│ ┌───────────────────────────┐ │
-│ │ Unity Development         │ │
-│ │                           │ │
-│ │ Unity Editor              │ │
-│ │ Android Build Support     │ │
-│ │ X11                       │ │
-│ │ x11vnc                    │ │
-│ │ noVNC                     │ │
-│ │                           │ │
-│ │ /project ← ./src          │ │
-│ └───────────────────────────┘ │
-└───────────────────────────────┘
-```
+The environment is split between the client computer and the remote Linux development server.
 
+### Client Computer
+
+The client is used for:
+
+- Browser access to the Unity Editor through noVNC
+- Source code editing
+- SSH access
+- Git operations
+- General project management
+
+Unity itself does not need to be installed on the client.
+
+### Linux Development Server
+
+The server is responsible for:
+
+- Running Docker
+- Running the Unity development container
+- Storing the Unity project files
+- Running Unity imports and compilation
+- Producing Android builds
+- Providing GPU access to Unity
+- Hosting the remote graphical session
+
+### Unity Container
+
+The Unity container provides:
+
+- Unity Editor
+- Android Build Support
+- Android SDK, NDK, and OpenJDK
+- X11 graphical environment
+- x11vnc
+- websockify
+- noVNC
+
+The Unity project is mounted from the host into the container, allowing the project files to persist independently of the container lifecycle.
+
+### Remote Access
+
+The Unity graphical session is exposed through noVNC.
+
+The browser connects to the noVNC service, which forwards input and display data to the VNC server running inside the container.
+
+This allows the complete Unity Editor to be controlled remotely without requiring a native VNC client.
+
+### Project Storage
+
+The Unity project is stored on the Linux host under:
+
+```text
+src/
 ## Project Philosophy
 
 The goal of this scaffold is to separate the development workstation from the resources required to run Unity.
