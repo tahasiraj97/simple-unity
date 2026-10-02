@@ -12,14 +12,16 @@ services:
       - ./.unity/Library:/project/Library
       - ./.unity/config:/root/.config
       - ./.unity/local:/root/.local
-    environment: ["DISPLAY=:0"]
+    environment: ["DISPLAY=:0", "PROJECT_TYPE=2d"]
     shm_size: "2gb"
 
     command: |
       bash -c '
         set -e
+
         apt-get update
         apt-get install -y --no-install-recommends curl ca-certificates xserver-xorg-core xserver-xorg-video-intel x11-xserver-utils tigervnc-scraping-server novnc websockify openbox mesa-utils xdotool wmctrl
+
         if [ ! -x /root/.local/bin/unity ]; then
           curl -fsSL https://unity.com/install.sh | UNITY_CLI_CHANNEL=beta bash
         fi
@@ -53,7 +55,29 @@ services:
         fi
 
         if [ ! -f /project/ProjectSettings/ProjectVersion.txt ]; then
-          "$${UNITY_PATH}/Editor/Unity" -quit -batchmode -createProject /tmp/unity-project -logFile -
+          case "$${PROJECT_TYPE}" in
+            2d)
+              TEMPLATE_PATH="$$(find "$${UNITY_PATH}/Editor/Data/Resources/PackageManager/ProjectTemplates" -maxdepth 1 -name "com.unity.template.2d-cross-platform-2d-*.tgz" -print -quit)"
+              ;;
+            3d)
+              TEMPLATE_PATH="$$(find "$${UNITY_PATH}/Editor/Data/Resources/PackageManager/ProjectTemplates" -maxdepth 1 -name "com.unity.template.3d-cross-platform-*.tgz" -print -quit)"
+              ;;
+            *)
+              echo "PROJECT_TYPE must be either 2d or 3d."
+              exit 1
+              ;;
+          esac
+
+          if [ -z "$$TEMPLATE_PATH" ]; then
+            echo "Could not find Unity template for PROJECT_TYPE=$${PROJECT_TYPE}."
+            echo "Available templates:"
+            find "$${UNITY_PATH}/Editor/Data/Resources/PackageManager/ProjectTemplates" -maxdepth 1 -name "*.tgz" -printf "%f\n"
+            exit 1
+          fi
+
+          echo "Creating $${PROJECT_TYPE} project using $$TEMPLATE_PATH"
+
+          "$${UNITY_PATH}/Editor/Unity" -quit -batchmode -createProject /tmp/unity-project -cloneFromTemplate "$$TEMPLATE_PATH" -logFile -
           cp -a /tmp/unity-project/Assets/. /project/Assets/
           cp -a /tmp/unity-project/Packages/. /project/Packages/
           cp -a /tmp/unity-project/ProjectSettings/. /project/ProjectSettings/
