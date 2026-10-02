@@ -281,6 +281,8 @@ The Unity project is stored on the Linux host under:
 
 ```text
 src/
+```
+
 ## Project Philosophy
 
 The goal of this scaffold is to separate the development workstation from the resources required to run Unity.
