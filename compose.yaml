@@ -1,0 +1,70 @@
+services:
+  unity:
+    image: unityci/editor:6000.3.25f1-android-3.2.2
+    container_name: unity-dev
+    privileged: true
+    devices: ["/dev/dri:/dev/dri"]
+    ports: ["5400:6080"]
+    volumes:
+      - ./src/Assets:/project/Assets
+      - ./src/Packages:/project/Packages
+      - ./src/ProjectSettings:/project/ProjectSettings
+      - ./.unity/Library:/project/Library
+      - ./.unity/config:/root/.config
+      - ./.unity/local:/root/.local
+    environment: ["DISPLAY=:0"]
+    shm_size: "2gb"
+
+    command: |
+      bash -c '
+        set -e
+        apt-get update
+        apt-get install -y --no-install-recommends curl ca-certificates xserver-xorg-core xserver-xorg-video-intel x11-xserver-utils tigervnc-scraping-server novnc websockify openbox mesa-utils xdotool wmctrl
+        if [ ! -x /root/.local/bin/unity ]; then
+          curl -fsSL https://unity.com/install.sh | UNITY_CLI_CHANNEL=beta bash
+        fi
+
+        printf "%s\n" "Section \"Device\"" "  Identifier \"Intel\"" "  Driver \"intel\"" "  Option \"VirtualHeads\" \"1\"" "  Option \"DRI\" \"3\"" "EndSection" >/tmp/xorg.conf
+        Xorg :0 -config /tmp/xorg.conf -noreset -nolisten tcp >/tmp/xorg.log 2>&1 &
+
+        until DISPLAY=:0 xrandr >/dev/null 2>&1; do
+          sleep 1
+        done
+
+        DISPLAY=:0 xrandr --newmode "1600x900" 118.25 1600 1696 1856 2112 900 903 908 934 -hsync +vsync
+        DISPLAY=:0 xrandr --addmode VIRTUAL1 "1600x900"
+        DISPLAY=:0 xrandr --output VIRTUAL1 --mode "1600x900" --primary
+
+        openbox &
+        x0tigervncserver -display :0 -rfbport 5900 -localhost yes -SecurityTypes None -fg &
+        websockify --web=/usr/share/novnc 6080 127.0.0.1:5900 &
+
+        LICENSE_STATUS="$$(/root/.local/bin/unity license status 2>&1 || true)"
+
+        if printf "%s\n" "$$LICENSE_STATUS" | grep -qi "none active"; then
+          printf "%s\n" "$$LICENSE_STATUS"
+          echo "Unity is not activated."
+          echo "Run: docker exec -it unity-dev bash"
+          echo "Then: export PATH=/root/.local/bin:\$$PATH"
+          echo "Then: unity auth login"
+          echo "Then: unity license activate --personal --accept-eula"
+          echo "Then restart the container."
+          exec sleep infinity
+        fi
+
+        if [ ! -f /project/ProjectSettings/ProjectVersion.txt ]; then
+          "$${UNITY_PATH}/Editor/Unity" -quit -batchmode -createProject /tmp/unity-project -logFile -
+          cp -a /tmp/unity-project/Assets/. /project/Assets/
+          cp -a /tmp/unity-project/Packages/. /project/Packages/
+          cp -a /tmp/unity-project/ProjectSettings/. /project/ProjectSettings/
+          rm -rf /tmp/unity-project
+        fi
+
+        mkdir -p /project/Assets/Scripts /project/Assets/GameAssets /project/Assets/Scenes
+        chmod -R a+rwX /project/Assets /project/Packages /project/ProjectSettings
+
+        (until xdotool search --onlyvisible --name "Unity" >/dev/null 2>&1; do sleep 1; done; xdotool search --onlyvisible --limit 1 --name "Unity" windowactivate --sync; wmctrl -r :ACTIVE -b add,maximized_vert,maximized_horz) &
+
+        umask 000
+        exec env vblank_mode=0 "$${UNITY_PATH}/Editor/Unity" -projectPath /project -logFile -
+      '
